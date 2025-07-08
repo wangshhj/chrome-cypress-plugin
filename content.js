@@ -2,6 +2,7 @@ console.log('用户操作记录器 content.js 已加载');
 
 let isRecording = false;
 let actions = [];
+let scrollTimeout = null; // 滚动防抖定时器
 
 function getSelector(el) {
   if (!el) return '';
@@ -72,17 +73,56 @@ function inputHandler(e) {
   actions.push({type: 'input', dom, value: e.target.value});
 }
 
+function scrollHandler(e) {
+  if (!isRecording) return;
+  
+  // 清除之前的定时器
+  if (scrollTimeout) {
+    clearTimeout(scrollTimeout);
+  }
+  
+  // 设置新的定时器，延迟记录滚动位置
+  scrollTimeout = setTimeout(() => {
+    // 获取滚动目标元素
+    const target = e.target === document ? document.documentElement : e.target;
+    const dom = target === document.documentElement ? 'html' : getSelector(target);
+    
+    // 只记录滚动位置
+    const scrollData = {
+      type: 'scroll',
+      dom,
+      scrollTop: target.scrollTop,
+      scrollLeft: target.scrollLeft
+    };
+    
+    actions.push(scrollData);
+    scrollTimeout = null;
+  }, 150); // 150ms 延迟，滚动停止后才记录
+}
+
 function startRecord() {
   isRecording = true;
   actions = [];
   document.addEventListener('click', clickHandler, true);
   document.addEventListener('input', inputHandler, true);
+  document.addEventListener('scroll', scrollHandler, true);
+  // 监听所有元素的滚动事件
+  window.addEventListener('scroll', scrollHandler, true);
 }
 
 function stopRecord() {
   isRecording = false;
+  
+  // 清理滚动防抖定时器
+  if (scrollTimeout) {
+    clearTimeout(scrollTimeout);
+    scrollTimeout = null;
+  }
+  
   document.removeEventListener('click', clickHandler, true);
   document.removeEventListener('input', inputHandler, true);
+  document.removeEventListener('scroll', scrollHandler, true);
+  window.removeEventListener('scroll', scrollHandler, true);
   if (actions.length > 0) {
     const blob = new Blob([JSON.stringify(actions, null, 2)], {type: 'application/json'});
     const url = URL.createObjectURL(blob);

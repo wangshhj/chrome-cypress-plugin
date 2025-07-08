@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "用户操作记录器",
-  "version": "2.1",
+  "version": "2.3",
   "description": "记录用户操作动作，生成操作文件。",
   "permissions": ["activeTab"],
   "action": {
