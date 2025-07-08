@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "用户操作记录器",
+  "version": "2.1",
+  "description": "记录用户操作动作，生成操作文件。",
+  "permissions": ["activeTab"],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_end" 
+    }
+  ]
+} 

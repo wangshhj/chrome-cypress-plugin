@@ -1,0 +1,1 @@
+// 目前 getJsPath 已在 content.js 实现，如需独立可导出 
