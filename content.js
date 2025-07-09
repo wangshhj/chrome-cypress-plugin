@@ -511,16 +511,32 @@
     
     // Keyboard shortcuts
     document.addEventListener('keydown', function(event) {
-        // Ctrl+Shift+E or Cmd+Shift+E to start/stop recording
-        if (event.ctrlKey && event.shiftKey && event.key === 'E') {
+        // Primary shortcut: Ctrl+Shift+E or Cmd+Shift+E
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'e') {
             event.preventDefault();
+            event.stopPropagation();
+            
             if (isRecording) {
                 stopRecording();
             } else {
                 startRecording();
             }
+            return;
         }
-    });
+        
+        // Alternative shortcut: Ctrl+Shift+R or Cmd+Shift+R
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'r') {
+            event.preventDefault();
+            event.stopPropagation();
+            
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+            return;
+        }
+    }, true);
     
     // Initialize on page load
     function init() {
