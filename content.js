@@ -81,6 +81,19 @@
         return;
     }
 
+    // Global error handler to prevent crashes
+    window.addEventListener('error', function(event) {
+        console.error('🚨 Uncaught error in Cypress Recorder:', event.error);
+        // Don't stop the script execution, just log the error
+    });
+
+    // Handle unhandled promise rejections
+    window.addEventListener('unhandledrejection', function(event) {
+        console.error('🚨 Unhandled promise rejection in Cypress Recorder:', event.reason);
+        // Prevent the error from being logged to console as uncaught
+        event.preventDefault();
+    });
+
     // WebSocket connection to VS Code extension
     let ws = null;
     let connectionRetryCount = 0;
@@ -146,22 +159,8 @@
             ws.onerror = function(error) {
                 console.error('❌ WebSocket error:', error);
                 
-                // Send error details if possible
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    try {
-                        sendMessage({
-                            type: 'error',
-                            error: 'WebSocket connection error',
-                            details: {
-                                url: currentUrl,
-                                timestamp: Date.now(),
-                                userAgent: navigator.userAgent
-                            }
-                        });
-                    } catch (e) {
-                        console.error('Failed to send error message:', e);
-                    }
-                }
+                // Don't try to send error details via the same failed connection
+                // Just log the error and let the connection retry logic handle it
             };
             
         } catch (error) {
@@ -227,7 +226,6 @@
                 console.log('📤 Message sent to VS Code:', message.type);
             } catch (error) {
                 console.error('❌ Failed to send message to VS Code:', error);
-                console.log('Message was:', message);
                 
                 // Try to reconnect if send fails
                 if (connectionRetryCount < maxRetries) {
@@ -236,13 +234,16 @@
                 }
             }
         } else {
-            console.warn('⚠️ WebSocket not connected, message not sent:', message);
-            console.log('Connection state:', ws ? ws.readyState : 'No WebSocket');
+            // Silently handle disconnected state - this is normal
             
             // Store critical messages in localStorage as fallback
-            if (message.type === 'test_generated') {
-                localStorage.setItem('cypressRecorder_lastTest', JSON.stringify(message.testData));
-                console.log('💾 Test data saved to localStorage as fallback');
+            if (message.type === 'test_generated' && message.testData) {
+                try {
+                    localStorage.setItem('cypressRecorder_lastTest', JSON.stringify(message.testData));
+                    console.log('💾 Test data saved to localStorage as fallback');
+                } catch (error) {
+                    console.error('❌ Failed to save test data to localStorage:', error);
+                }
             }
         }
     }
@@ -283,14 +284,21 @@
             sessionId: sessionId
         });
         
-        // Notify popup of state change
-        try {
-            chrome.runtime.sendMessage({
-                action: 'recording_state_changed',
-                isRecording: true
-            });
-        } catch (error) {
-            console.log('Could not notify popup:', error);
+        // Notify popup of state change (if available)
+        if (chrome.runtime && chrome.runtime.sendMessage) {
+            try {
+                chrome.runtime.sendMessage({
+                    action: 'recording_state_changed',
+                    isRecording: true
+                }, function(response) {
+                    // Handle response or error silently
+                    if (chrome.runtime.lastError) {
+                        // Silently ignore - popup might not be listening
+                    }
+                });
+            } catch (error) {
+                // Silently ignore - this is not critical
+            }
         }
     }
     
@@ -320,14 +328,21 @@
             sessionId: sessionId
         });
         
-        // Notify popup of state change
-        try {
-            chrome.runtime.sendMessage({
-                action: 'recording_state_changed',
-                isRecording: false
-            });
-        } catch (error) {
-            console.log('Could not notify popup:', error);
+        // Notify popup of state change (if available)
+        if (chrome.runtime && chrome.runtime.sendMessage) {
+            try {
+                chrome.runtime.sendMessage({
+                    action: 'recording_state_changed',
+                    isRecording: false
+                }, function(response) {
+                    // Handle response or error silently
+                    if (chrome.runtime.lastError) {
+                        // Silently ignore - popup might not be listening
+                    }
+                });
+            } catch (error) {
+                // Silently ignore - this is not critical
+            }
         }
     }
     
@@ -485,28 +500,36 @@
     
     // Generate test data
     function generateTest() {
-        const testData = {
-            url: currentUrl,
-            actions: recordedActions,
-            timestamp: sessionId,
-            title: document.title || 'Recorded Test',
-            userAgent: navigator.userAgent,
-            viewport: {
-                width: window.innerWidth,
-                height: window.innerHeight
+        try {
+            const testData = {
+                url: currentUrl,
+                actions: recordedActions,
+                timestamp: sessionId,
+                title: document.title || 'Recorded Test',
+                userAgent: navigator.userAgent,
+                viewport: {
+                    width: window.innerWidth,
+                    height: window.innerHeight
+                }
+            };
+            
+            console.log('🧪 Test generated:', testData);
+            
+            // Send to VS Code extension
+            sendMessage({
+                type: 'test_generated',
+                testData: testData
+            });
+            
+            // Fallback: save to local storage
+            try {
+                localStorage.setItem('cypressRecorder_lastTest', JSON.stringify(testData));
+            } catch (error) {
+                console.error('❌ Failed to save test data to localStorage:', error);
             }
-        };
-        
-        console.log('🧪 Test generated:', testData);
-        
-        // Send to VS Code extension
-        sendMessage({
-            type: 'test_generated',
-            testData: testData
-        });
-        
-        // Fallback: save to local storage
-        localStorage.setItem('cypressRecorder_lastTest', JSON.stringify(testData));
+        } catch (error) {
+            console.error('❌ Error generating test data:', error);
+        }
     }
     
     // Keyboard shortcuts
@@ -579,30 +602,38 @@
     });
     
     // Listen for messages from popup and background script
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        console.log('📨 Content script received message:', message);
-        
-        switch (message.action) {
-            case 'start_recording':
-                console.log('🎬 Popup requested start recording');
-                startRecording();
-                sendResponse({success: true, isRecording: true});
-                break;
-            case 'stop_recording':
-                console.log('⏹️ Popup requested stop recording');
-                stopRecording();
-                sendResponse({success: true, isRecording: false});
-                break;
-            case 'get_recording_state':
-                console.log('📊 Popup requested recording state:', isRecording);
-                sendResponse({isRecording: isRecording});
-                break;
-            default:
-                console.log('❓ Unknown action from popup:', message.action);
-                sendResponse({success: false, error: 'Unknown action'});
-        }
-        return true; // Keep message channel open for async response
-    });
+    if (chrome.runtime && chrome.runtime.onMessage) {
+        chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+            console.log('📨 Content script received message:', message);
+            
+            try {
+                switch (message.action) {
+                    case 'start_recording':
+                        console.log('🎬 Popup requested start recording');
+                        startRecording();
+                        sendResponse({success: true, isRecording: true});
+                        break;
+                    case 'stop_recording':
+                        console.log('⏹️ Popup requested stop recording');
+                        stopRecording();
+                        sendResponse({success: true, isRecording: false});
+                        break;
+                    case 'get_recording_state':
+                        console.log('📊 Popup requested recording state:', isRecording);
+                        sendResponse({isRecording: isRecording});
+                        break;
+                    default:
+                        console.log('❓ Unknown action from popup:', message.action);
+                        sendResponse({success: false, error: 'Unknown action'});
+                }
+            } catch (error) {
+                console.error('❌ Error handling message:', error);
+                sendResponse({success: false, error: error.message});
+            }
+            
+            return true; // Keep message channel open for async response
+        });
+    }
 
     // Expose global functions for debugging
     window.cypressRecorder = {

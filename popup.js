@@ -10,6 +10,18 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentTab = null;
     let ws = null;
 
+    // Global error handler for popup
+    window.addEventListener('error', function(event) {
+        console.error('🚨 Uncaught error in popup:', event.error);
+        showError('插件运行时出错，请重试');
+    });
+
+    // Handle unhandled promise rejections
+    window.addEventListener('unhandledrejection', function(event) {
+        console.error('🚨 Unhandled promise rejection in popup:', event.reason);
+        event.preventDefault();
+    });
+
     // Initialize popup
     async function init() {
         console.log('🚀 Popup initializing (simple independent mode)...');
@@ -151,14 +163,19 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        chrome.tabs.sendMessage(currentTab.id, message, function(response) {
-            if (chrome.runtime.lastError) {
-                console.error('❌ Failed to send message to content script:', chrome.runtime.lastError);
-                showError('无法与页面通信，请刷新页面后重试');
-            } else {
-                console.log('✅ Message sent to content script successfully');
-            }
-        });
+        try {
+            chrome.tabs.sendMessage(currentTab.id, message, function(response) {
+                if (chrome.runtime.lastError) {
+                    console.error('❌ Failed to send message to content script:', chrome.runtime.lastError);
+                    showError('无法与页面通信，请刷新页面后重试');
+                } else {
+                    console.log('✅ Message sent to content script successfully');
+                }
+            });
+        } catch (error) {
+            console.error('❌ Error sending message to content script:', error);
+            showError('发送消息时出错，请重试');
+        }
     }
     
     // Send message to VS Code extension
@@ -166,8 +183,12 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('📤 Sending to VS Code:', message);
         
         if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify(message));
-            console.log('✅ Message sent to VS Code successfully');
+            try {
+                ws.send(JSON.stringify(message));
+                console.log('✅ Message sent to VS Code successfully');
+            } catch (error) {
+                console.error('❌ Error sending message to VS Code:', error);
+            }
         } else {
             console.warn('⚠️ VS Code not connected');
         }
