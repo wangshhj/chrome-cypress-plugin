@@ -1,15 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "用户操作记录器",
-  "version": "2.3",
-  "description": "记录用户操作动作，生成操作文件。",
-  "permissions": ["activeTab"],
+  "name": "Cypress Recorder",
+  "version": "3.1",
+  "description": "录制浏览器操作并生成 Cypress 测试代码，与 VS Code 扩展完美集成。",
+  "permissions": ["activeTab", "scripting"],
   "action": {
     "default_popup": "popup.html"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "exclude_matches": [
+        "https://chrome.google.com/webstore/*",
+        "https://microsoftedge.microsoft.com/addons/*"
+      ],
       "js": ["content.js"],
       "run_at": "document_end" 
     }

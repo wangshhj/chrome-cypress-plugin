@@ -2,15 +2,131 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>操作记录器</title>
+  <title>Cypress Recorder</title>
   <style>
-    body { min-width: 200px; font-family: sans-serif; }
-    button { margin: 10px 5px; padding: 8px 16px; }
+    body { 
+      min-width: 280px; 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+      padding: 15px;
+      margin: 0;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 15px;
+    }
+    .title {
+      font-size: 16px;
+      font-weight: bold;
+      margin: 0 0 5px 0;
+    }
+    .connection-status {
+      font-size: 12px;
+      color: #666;
+      margin: 5px 0;
+    }
+    .connected { color: #10b981; }
+    .disconnected { color: #ef4444; }
+    button { 
+      width: 100%;
+      margin: 5px 0; 
+      padding: 10px 16px; 
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .primary-btn {
+      background: #3b82f6;
+      color: white;
+    }
+    .primary-btn:hover { background: #2563eb; }
+    .primary-btn:disabled { background: #9ca3af; cursor: not-allowed; }
+    .secondary-btn {
+      background: #f3f4f6;
+      color: #374151;
+      border: 1px solid #d1d5db;
+    }
+    .secondary-btn:hover { background: #e5e7eb; }
+    .danger-btn {
+      background: #ef4444;
+      color: white;
+    }
+    .danger-btn:hover { background: #dc2626; }
+    .recording {
+      background: #ef4444 !important;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .shortcut {
+      font-size: 11px;
+      color: #6b7280;
+      text-align: center;
+      margin: 10px 0;
+    }
+    .test-links {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid #e5e7eb;
+    }
+    .test-links h4 {
+      margin: 0 0 10px 0;
+      font-size: 12px;
+      color: #374151;
+    }
+    .test-link {
+      display: block;
+      font-size: 11px;
+      color: #3b82f6;
+      text-decoration: none;
+      padding: 5px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .test-link:hover {
+      color: #2563eb;
+      background: #f8fafc;
+    }
+    .warning {
+      background: #fef3c7;
+      border: 1px solid #fbbf24;
+      border-radius: 6px;
+      padding: 10px;
+      margin: 10px 0;
+      font-size: 12px;
+      color: #92400e;
+    }
+    
+    /* Simple disabled button styling */
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
-  <button id="startBtn">开始</button>
-  <button id="stopBtn">结束</button>
+  <div class="header">
+    <h1 class="title">Cypress Recorder</h1>
+    <div class="connection-status" id="connectionStatus">检查连接中...</div>
+  </div>
+  
+  <div id="warningMessage" class="warning" style="display: none;"></div>
+  
+  <button id="startBtn" class="primary-btn">🔴 开始录制</button>
+  <button id="stopBtn" class="danger-btn">⏹️ 停止录制</button>
+  
+  <div class="shortcut">快捷键: Ctrl+Shift+E</div>
+  
+  <div class="test-links">
+    <h4>📋 测试页面</h4>
+    <a href="https://example.com" class="test-link" target="_blank">Example.com - 基础测试</a>
+    <a href="https://httpbin.org/forms/post" class="test-link" target="_blank">HTTPBin - 表单测试</a>
+    <a href="https://demo.guru99.com/test/login.html" class="test-link" target="_blank">Demo Login - 登录测试</a>
+    <a href="https://the-internet.herokuapp.com/" class="test-link" target="_blank">The Internet - 综合测试</a>
+  </div>
+  
   <script src="popup.js"></script>
 </body>
 </html> 
