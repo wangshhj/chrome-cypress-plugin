@@ -120,7 +120,6 @@
             ws = new WebSocket(`ws://localhost:${wsPort}`);
             
             ws.onopen = function() {
-                console.log('Connected to Cypress Recorder VS Code Extension');
                 connectionRetryCount = 0;
                 
                 // Send connection status
@@ -142,16 +141,13 @@
             };
             
             ws.onclose = function(event) {
-                console.log('WebSocket connection closed. Code:', event.code, 'Reason:', event.reason);
                 ws = null;
                 
                 // Retry connection
                 if (connectionRetryCount < maxRetries) {
                     connectionRetryCount++;
-                    console.log(`🔄 Retrying connection... (${connectionRetryCount}/${maxRetries})`);
                     setTimeout(initWebSocket, 2000 * connectionRetryCount); // Exponential backoff
                 } else {
-                    console.log('⚠️ Max retries reached. Falling back to local storage.');
                     fallbackToLocalStorage();
                 }
             };
@@ -180,15 +176,6 @@
                 break;
             case 'connected':
                 isRecording = message.recording || false;
-                console.log('✅ VS Code extension connected, recording:', isRecording);
-                
-                // Show connection status to user
-                if (isRecording) {
-                    console.log('🔴 Recording is already active');
-                } else {
-                    console.log('⚪ Recording is not active. Use Ctrl+Shift+R to start recording.');
-                }
-                
                 // Update localStorage to sync state
                 localStorage.setItem('cypressRecorder_recording', isRecording.toString());
                 break;
@@ -210,11 +197,9 @@
                 break;
             case 'pong':
                 // Handle pong response
-                console.log('📡 Received pong from VS Code extension');
                 break;
             default:
-                console.warn('🤔 Unknown message type from VS Code:', message.type);
-                console.log('Full message:', message);
+                console.warn('Unknown message type from VS Code:', message.type);
         }
     }
     
@@ -223,13 +208,11 @@
         if (ws && ws.readyState === WebSocket.OPEN) {
             try {
                 ws.send(JSON.stringify(message));
-                console.log('📤 Message sent to VS Code:', message.type);
             } catch (error) {
                 console.error('❌ Failed to send message to VS Code:', error);
                 
                 // Try to reconnect if send fails
                 if (connectionRetryCount < maxRetries) {
-                    console.log('🔄 Attempting to reconnect after send failure...');
                     setTimeout(initWebSocket, 1000);
                 }
             }
@@ -240,7 +223,6 @@
             if (message.type === 'test_generated' && message.testData) {
                 try {
                     localStorage.setItem('cypressRecorder_lastTest', JSON.stringify(message.testData));
-                    console.log('💾 Test data saved to localStorage as fallback');
                 } catch (error) {
                     console.error('❌ Failed to save test data to localStorage:', error);
                 }
@@ -250,8 +232,6 @@
     
     // Fallback to local storage when WebSocket is not available
     function fallbackToLocalStorage() {
-        console.log('Using local storage fallback');
-        
         // Check if recording should be enabled from local storage
         const savedRecordingState = localStorage.getItem('cypressRecorder_recording');
         if (savedRecordingState === 'true') {
@@ -413,7 +393,6 @@
         
         // 如果选择器为空，不记录此操作
         if (!selector) {
-            console.log('⏸️ Click ignored: element has no class');
             return;
         }
         
@@ -424,8 +403,6 @@
             timestamp: Date.now(),
             url: window.location.href
         });
-        
-        console.log('📍 Click recorded:', selector);
     }
     
     // Handle input events
@@ -437,7 +414,6 @@
         
         // 如果选择器为空，不记录此操作
         if (!selector) {
-            console.log('⏸️ Input ignored: element has no class');
             return;
         }
         
@@ -448,8 +424,6 @@
             timestamp: Date.now(),
             url: window.location.href
         });
-        
-        console.log('⌨️ Input recorded:', selector, target.value);
     }
     
     // Handle scroll events with debouncing
@@ -475,7 +449,6 @@
                 
                 // 如果选择器为空，不记录此操作
                 if (!selector) {
-                    console.log('⏸️ Scroll ignored: element has no class');
                     return;
                 }
             }
@@ -487,13 +460,6 @@
                 scrollLeft: scrollLeft,
                 timestamp: Date.now(),
                 url: window.location.href
-            });
-            
-            console.log('📜 Scroll recorded:', {
-                selector: selector,
-                scrollTop: scrollTop,
-                scrollLeft: scrollLeft,
-                isPageScroll: target === document || target === document.documentElement || target === document.body
             });
         }, scrollDebounceDelay);
     }
@@ -512,8 +478,6 @@
                     height: window.innerHeight
                 }
             };
-            
-            console.log('🧪 Test generated:', testData);
             
             // Send to VS Code extension
             sendMessage({
@@ -563,21 +527,16 @@
     
     // Initialize on page load
     function init() {
-        console.log('🚀 Cypress Recorder initialized');
-        console.log('📡 Attempting to connect to VS Code extension on port', wsPort);
-        
         // Initialize WebSocket connection
         initWebSocket();
         
         // Check for saved recording state
         const savedRecordingState = localStorage.getItem('cypressRecorder_recording');
-        console.log('💾 Saved recording state:', savedRecordingState);
         
         if (savedRecordingState === 'true') {
             // Wait a bit for WebSocket to connect
             setTimeout(() => {
                 if (!isRecording) {
-                    console.log('⏰ Auto-starting recording from saved state');
                     startRecording();
                 }
             }, 1000);
@@ -604,26 +563,20 @@
     // Listen for messages from popup and background script
     if (chrome.runtime && chrome.runtime.onMessage) {
         chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-            console.log('📨 Content script received message:', message);
-            
             try {
                 switch (message.action) {
                     case 'start_recording':
-                        console.log('🎬 Popup requested start recording');
                         startRecording();
                         sendResponse({success: true, isRecording: true});
                         break;
                     case 'stop_recording':
-                        console.log('⏹️ Popup requested stop recording');
                         stopRecording();
                         sendResponse({success: true, isRecording: false});
                         break;
                     case 'get_recording_state':
-                        console.log('📊 Popup requested recording state:', isRecording);
                         sendResponse({isRecording: isRecording});
                         break;
                     default:
-                        console.log('❓ Unknown action from popup:', message.action);
                         sendResponse({success: false, error: 'Unknown action'});
                 }
             } catch (error) {
