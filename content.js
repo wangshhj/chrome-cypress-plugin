@@ -32,12 +32,7 @@
     // Show friendly error message for invalid pages
     function showPageError() {
         console.warn('🚫 Cypress Recorder: 当前页面无法注入脚本，请在普通网页测试！');
-        console.info('✅ 建议测试页面：');
-        console.info('  • https://example.com');
-        console.info('  • https://httpbin.org/forms/post');
-        console.info('  • https://demo.guru99.com/test/login.html');
-        console.info('  • https://the-internet.herokuapp.com/');
-        console.info('  • 或任何 http:// 或 https:// 开头的网页');
+     
         
         // Try to show a visual notification if possible
         if (document.body) {
@@ -113,6 +108,14 @@
     // Initialize WebSocket connection
     function initWebSocket() {
         if (ws && ws.readyState === WebSocket.OPEN) {
+            // If already connected and we're recording, send recording_started immediately
+            if (isRecording) {
+                sendMessage({
+                    type: 'recording_started',
+                    url: currentUrl,
+                    sessionId: sessionId
+                });
+            }
             return;
         }
         
@@ -129,6 +132,15 @@
                     url: currentUrl,
                     recording: isRecording
                 });
+                
+                // If we're already recording when connection is established, send recording_started
+                if (isRecording) {
+                    sendMessage({
+                        type: 'recording_started',
+                        url: currentUrl,
+                        sessionId: sessionId
+                    });
+                }
             };
             
             ws.onmessage = function(event) {
@@ -143,17 +155,15 @@
             ws.onclose = function(event) {
                 ws = null;
                 
-                // Retry connection
-                if (connectionRetryCount < maxRetries) {
+                // Only retry if we're still recording
+                if (isRecording && connectionRetryCount < maxRetries) {
                     connectionRetryCount++;
                     setTimeout(initWebSocket, 2000 * connectionRetryCount); // Exponential backoff
-                } else {
-                    fallbackToLocalStorage();
                 }
             };
             
             ws.onerror = function(error) {
-                console.error('❌ WebSocket error:', error);
+                console.error('❌ WebSocket connection error:', error);
                 
                 // Don't try to send error details via the same failed connection
                 // Just log the error and let the connection retry logic handle it
@@ -161,8 +171,16 @@
             
         } catch (error) {
             console.error('Failed to create WebSocket connection:', error);
-            fallbackToLocalStorage();
         }
+    }
+    
+    // Close WebSocket connection
+    function closeWebSocket() {
+        if (ws) {
+            ws.close();
+            ws = null;
+        }
+        connectionRetryCount = 0;
     }
     
     // Handle messages from VS Code extension
@@ -175,9 +193,12 @@
                 stopRecording();
                 break;
             case 'connected':
-                isRecording = message.recording || false;
-                // Update localStorage to sync state
-                localStorage.setItem('cypressRecorder_recording', isRecording.toString());
+                // Don't override local recording state - VS Code should sync to us, not the other way around
+                // Only sync if we're not currently recording
+                if (!isRecording) {
+                    isRecording = message.recording || false;
+                    localStorage.setItem('cypressRecorder_recording', isRecording.toString());
+                }
                 break;
             case 'error':
                 console.error('❌ VS Code extension error:', message.error || message.message || 'Unknown error');
@@ -211,15 +232,13 @@
             } catch (error) {
                 console.error('❌ Failed to send message to VS Code:', error);
                 
-                // Try to reconnect if send fails
-                if (connectionRetryCount < maxRetries) {
+                // Try to reconnect if send fails and we're recording
+                if (isRecording && connectionRetryCount < maxRetries) {
                     setTimeout(initWebSocket, 1000);
                 }
             }
         } else {
-            // Silently handle disconnected state - this is normal
-            
-            // Store critical messages in localStorage as fallback
+            // WebSocket not connected - store critical messages as fallback
             if (message.type === 'test_generated' && message.testData) {
                 try {
                     localStorage.setItem('cypressRecorder_lastTest', JSON.stringify(message.testData));
@@ -227,15 +246,6 @@
                     console.error('❌ Failed to save test data to localStorage:', error);
                 }
             }
-        }
-    }
-    
-    // Fallback to local storage when WebSocket is not available
-    function fallbackToLocalStorage() {
-        // Check if recording should be enabled from local storage
-        const savedRecordingState = localStorage.getItem('cypressRecorder_recording');
-        if (savedRecordingState === 'true') {
-            startRecording();
         }
     }
     
@@ -252,17 +262,16 @@
         console.log('🔴 Recording started');
         localStorage.setItem('cypressRecorder_recording', 'true');
         
+        // Connect WebSocket when starting recording
+        initWebSocket();
+        
         // Add event listeners
         document.addEventListener('click', handleClick, true);
         document.addEventListener('input', handleInput, true);
         document.addEventListener('scroll', handleScroll, true);
         
-        // Send confirmation to VS Code
-        sendMessage({
-            type: 'recording_started',
-            url: currentUrl,
-            sessionId: sessionId
-        });
+        // Send confirmation to VS Code (will be sent once WebSocket connects)
+        // Removed the setTimeout as it's now handled in ws.onopen
         
         // Notify popup of state change (if available)
         if (chrome.runtime && chrome.runtime.sendMessage) {
@@ -298,7 +307,7 @@
         document.removeEventListener('input', handleInput, true);
         document.removeEventListener('scroll', handleScroll, true);
         
-        // Generate and send test data
+        // Generate and send test data before closing connection
         generateTest();
         
         // Send confirmation to VS Code
@@ -307,6 +316,11 @@
             url: currentUrl,
             sessionId: sessionId
         });
+        
+        // Close WebSocket connection after a short delay to ensure messages are sent
+        setTimeout(() => {
+            closeWebSocket();
+        }, 1000);
         
         // Notify popup of state change (if available)
         if (chrome.runtime && chrome.runtime.sendMessage) {
@@ -396,13 +410,16 @@
             return;
         }
         
-        recordedActions.push({
+        const action = {
             type: 'click',
             selector: selector,
             text: target.textContent ? target.textContent.trim().substring(0, 50) : '',
             timestamp: Date.now(),
             url: window.location.href
-        });
+        };
+        
+        recordedActions.push(action);
+        console.log('🖱️ Click recorded:', selector);
     }
     
     // Handle input events
@@ -417,13 +434,16 @@
             return;
         }
         
-        recordedActions.push({
+        const action = {
             type: 'input',
             selector: selector,
             value: target.value,
             timestamp: Date.now(),
             url: window.location.href
-        });
+        };
+        
+        recordedActions.push(action);
+        console.log('⌨️ Input recorded:', selector, '=', target.value ? `"${target.value.substring(0, 20)}${target.value.length > 20 ? '...' : ''}"` : '""');
     }
     
     // Handle scroll events with debouncing
@@ -453,14 +473,17 @@
                 }
             }
             
-            recordedActions.push({
+            const action = {
                 type: 'scroll',
                 selector: selector,
                 scrollTop: scrollTop,
                 scrollLeft: scrollLeft,
                 timestamp: Date.now(),
                 url: window.location.href
-            });
+            };
+            
+            recordedActions.push(action);
+            console.log('📜 Scroll recorded:', selector, `(${scrollTop}, ${scrollLeft})`);
         }, scrollDebounceDelay);
     }
     
@@ -527,14 +550,13 @@
     
     // Initialize on page load
     function init() {
-        // Initialize WebSocket connection
-        initWebSocket();
+        // Don't auto-connect WebSocket - only connect when recording starts
         
         // Check for saved recording state
         const savedRecordingState = localStorage.getItem('cypressRecorder_recording');
         
         if (savedRecordingState === 'true') {
-            // Wait a bit for WebSocket to connect
+            // Auto-start recording if it was previously enabled
             setTimeout(() => {
                 if (!isRecording) {
                     startRecording();
@@ -554,9 +576,9 @@
     window.addEventListener('beforeunload', function() {
         if (isRecording) {
             stopRecording();
-        }
-        if (ws) {
-            ws.close();
+        } else {
+            // Close WebSocket if it's open but not recording
+            closeWebSocket();
         }
     });
     
